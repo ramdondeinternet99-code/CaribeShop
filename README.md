@@ -5,10 +5,8 @@ Terraform y se valida con un pipeline DevSecOps (GitHub Actions + Checkov), prue
 carga (Locust) y pruebas de falla.
 
 ## Arquitectura
-
-```mermaid
 flowchart TB
-    Internet([" Internet"])
+    Internet(["🌐 Internet"])
     Pip["IP pública Standard<br/>(Zonal-redundante: Zonas 1, 2, 3)"]
     LB["Load Balancer Standard<br/>Sonda HTTP /health (5 s × 2 fallos)"]
 
