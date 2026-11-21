@@ -6,28 +6,53 @@ carga (Locust) y pruebas de falla.
 
 ## Arquitectura
 
-```
- Internet
-    │
- IP pública Standard (zonal-redundante: zonas 1,2,3)
-    │
- Load Balancer Standard ── sonda HTTP /health (5 s x 2 fallos)
-    │
- ┌──────── snet-app (NSG: HTTP desde Internet y sonda del LB; SSH/RDP denegados; egress solo AzureKeyVault) ───────┐
- │ VM Scale Set Ubuntu 22.04 · zonas 1, 2 y 3 · min 2 / max 4 · autoscale CPU (60 % out / 25 % in)                 │
- │ · reparación automática · identidad administrada · sin IP pública · cloud-init (sin secretos)                    │
- └───────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────┘
-                 │ service endpoint Microsoft.KeyVault
-        Key Vault (RBAC, purge protection, firewall subred + IP operador, secreto con expiración) · Storage (sin llaves, firewall)
-                 │
-        Log Analytics ◄── diagnostic settings (Key Vault: AuditEvent, Storage, Autoscale) + alertas por correo
- GitHub Actions: fmt · validate · Checkov (bloqueante) | Azure Policy (Deny) sobre el grupo de recursos
-```
+```mermaid
+flowchart TB
+    Internet(["🌐 Internet"])
+    Pip["IP pública Standard<br/>(Zonal-redundante: Zonas 1, 2, 3)"]
+    LB["Load Balancer Standard<br/>Sonda HTTP /health (5 s × 2 fallos)"]
+
+    subgraph RG["Grupo de recursos (gobernado por Azure Policy - Deny)"]
+        direction TB
+
+        subgraph VNet["Red Virtual · Subred: snet-app"]
+            direction TB
+            NSG["NSG: HTTP desde Internet y sonda LB<br/>SSH/RDP denegados · Egress solo AzureKeyVault"]
+
+            subgraph VMSS["VM Scale Set (Ubuntu 22.04 · Zonas 1, 2 y 3)"]
+                direction LR
+                VM1["Instancia VMSS<br/>Sin IP pública · Identidad administrada<br/>cloud-init (sin secretos)"]
+                VM2["Instancia VMSS<br/>Sin IP pública · Identidad administrada<br/>cloud-init (sin secretos)"]
+            end
+
+            Autoscale["Autoscale CPU: out ≥ 60% / in ≤ 25%<br/>Min 2 / Max 4 · Reparación automática"]
+        end
+
+        KV["Key Vault<br/>RBAC · Purge protection<br/>Firewall: snet-app + IP operador<br/>Secreto con expiración"]
+        ST["Storage Account<br/>Sin llaves · Firewall activo"]
+        LA[("Log Analytics<br/>Diagnostic settings: Key Vault (AuditEvent),<br/>Storage, Autoscale + Alertas por correo")]
+    end
+
+    GHA["GitHub Actions CI/CD<br/>fmt · validate · Checkov (bloqueante)"]
+
+    Internet --> Pip --> LB
+    LB -->|"Sonda /health y tráfico HTTP"| NSG
+    NSG --> VMSS
+    Autoscale -.->|"Escala / repara"| VMSS
+
+    VMSS -->|"Identidad administrada (/secret-check)"| KV
+    KV -.->|"Service Endpoint Microsoft.KeyVault"| VNet
+    VMSS -->|"Firewall / acceso controlado"| ST
+
+    KV -->|"AuditEvent"| LA
+    ST -->|"Logs / métricas"| LA
+    Autoscale -->|"Eventos de escalado"| LA
+
+    GHA -.->|"Despliega y valida IaC"| RG
 
 Endpoints de la app (`app/app.py`, solo librería estándar de Python; integra la app de `demo-escalamiento` y
 la lectura del secreto de `demo-seguridad`):
-`/` (instancia, zona y color) · `/api/info` (JSON) · `/work?ms=N` (consume ~N ms de CPU real: carga para el autoscale) ·
-`/health` (sonda; 503 si existe `/var/run/app-unhealthy`) · `/secret-check` (lee el secreto con la identidad
+`/` (instancia, zona y color) · `/api/info` (JSON) · `/work?ms=N` (consume ~N ms de CPU real: carga parad
 administrada y devuelve **solo** longitud y SHA-256 truncado). Todas las respuestas llevan `X-Served-By`.
 
 ## Estructura del repositorio
