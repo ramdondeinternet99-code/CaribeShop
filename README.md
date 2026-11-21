@@ -5,50 +5,34 @@ Terraform y se valida con un pipeline DevSecOps (GitHub Actions + Checkov), prue
 carga (Locust) y pruebas de falla.
 
 ## Arquitectura
-flowchart TB
-    Internet(["🌐 Internet"])
-    Pip["IP pública Standard<br/>(Zonal-redundante: Zonas 1, 2, 3)"]
-    LB["Load Balancer Standard<br/>Sonda HTTP /health (5 s × 2 fallos)"]
+flowchart LR
+    Internet(["Internet"]) --> Pip["IP Pública Standard<br/>Zonas 1, 2 y 3"]
+    Pip --> LB["Load Balancer Standard<br/>Sonda /health (5s x 2)"]
 
-    subgraph RG["Grupo de recursos (gobernado por Azure Policy - Deny)"]
+    subgraph RG["Resource Group · Azure Policy (Deny)"]
         direction TB
 
-        subgraph VNet["Red Virtual · Subred: snet-app"]
-            direction TB
-            NSG["NSG: HTTP desde Internet y sonda LB<br/>SSH/RDP denegados · Egress solo AzureKeyVault"]
-
-            subgraph VMSS["VM Scale Set (Ubuntu 22.04 · Zonas 1, 2 y 3)"]
-                direction LR
-                VM1["Instancia VMSS<br/>Sin IP pública · Identidad administrada<br/>cloud-init (sin secretos)"]
-                VM2["Instancia VMSS<br/>Sin IP pública · Identidad administrada<br/>cloud-init (sin secretos)"]
-            end
-
-            Endpoints["Endpoints de la app<br/>/health (503 si existe /var/run/app-unhealthy)<br/>/secret-check (lee secreto con identidad)"]
-            Autoscale["Autoscale CPU: out ≥ 60% / in ≤ 25%<br/>Min 2 / Max 4 · Reparación automática"]
+        subgraph VNet["VNet · snet-app"]
+            NSG["NSG: HTTP y LB<br/>No SSH/RDP · Egress KeyVault"]
+            VMSS["VMSS Ubuntu 22.04<br/>Zonas 1-3 · Min 2 / Max 4<br/>CPU out 60% / in 25%<br/>Sin IP pública · Identidad<br/>/health · /secret-check"]
         end
 
-        KV["Key Vault<br/>RBAC · Purge protection<br/>Firewall: snet-app + IP operador<br/>Secreto con expiración"]
-        ST["Storage Account<br/>Sin llaves · Firewall activo"]
-        LA[("Log Analytics<br/>Diagnostic settings: Key Vault (AuditEvent),<br/>Storage, Autoscale + Alertas por correo")]
+        subgraph SecOps["Seguridad y Logs"]
+            KV["Key Vault<br/>RBAC · Purge Protection<br/>Firewall + Secreto exp."]
+            ST["Storage Account<br/>Sin llaves · Firewall"]
+            LA[("Log Analytics<br/>AuditEvent · Alertas")]
+        end
     end
 
-    GHA["GitHub Actions CI/CD<br/>fmt · validate · Checkov (bloqueante)"]
+    GHA["GitHub Actions<br/>fmt · validate · Checkov"]
 
-    Internet --> Pip --> LB
-    LB -->|"Sonda /health y tráfico HTTP"| NSG
-    NSG --> VMSS
-    VMSS --- Endpoints
-    Autoscale -.->|"Escala / repara"| VMSS
-
-    VMSS -->|"Identidad administrada (/secret-check)"| KV
-    KV -.->|"Service Endpoint Microsoft.KeyVault"| VNet
-    VMSS -->|"Firewall / acceso controlado"| ST
-
-    KV -->|"AuditEvent"| LA
-    ST -->|"Logs / métricas"| LA
-    Autoscale -->|"Eventos de escalado"| LA
-
-    GHA -.->|"Despliega y valida IaC"| RG
+    LB --> NSG --> VMSS
+    VMSS -->|"Identidad"| KV
+    VMSS -->|"Firewall"| ST
+    KV -.->|"Service Endpoint"| VNet
+    KV --> LA
+    ST --> LA
+    GHA -.->|"CI/CD"| RG
 
 Endpoints de la app (`app/app.py`, solo librería estándar de Python; integra la app de `demo-escalamiento` y
 la lectura del secreto de `demo-seguridad`):
