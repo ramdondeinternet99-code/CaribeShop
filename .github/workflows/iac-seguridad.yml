@@ -1,0 +1,135 @@
+# Pipeline DevSecOps (D1). Adaptado de demo-seguridad/.github/workflows/iac-seguridad.yml
+#  1) fmt + validate
+#  2) Checkov bloqueante (terraform) con SARIF + escaneo de secretos
+#  3) terraform plan con OIDC (opcional: se activa con la variable de repositorio ENABLE_PLAN=true)
+name: IaC seguridad
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform-checks:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      # validate evalua file(pathexpand(var.ssh_public_key_path)): hace falta una llave (efimera)
+      - name: Llave SSH efimera para validar
+        run: |
+          mkdir -p "$HOME/.ssh"
+          ssh-keygen -t rsa -b 4096 -N "" -f "$HOME/.ssh/id_rsa" -q
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive -diff
+        working-directory: infra
+
+      - name: validate (infra)
+        working-directory: infra
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: validate (bootstrap)
+        working-directory: infra/bootstrap
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  checkov:
+    name: Checkov (bloqueante)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write       # para publicar SARIF en la pestana Security
+    steps:
+      - uses: actions/checkout@v4
+
+      # Si hay hallazgos fallidos el paso falla y el PR queda bloqueado
+      - name: Checkov - Terraform (bloqueante)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra
+          framework: terraform
+          soft_fail: false
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
+
+      - name: Publicar resultados en GitHub Security
+        if: always()
+        continue-on-error: true    # si code scanning no esta disponible, no falla el job
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+
+      - name: Guardar reporte SARIF como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-sarif
+          path: results.sarif
+          if-no-files-found: ignore
+
+  secretos:
+    name: Escaneo de secretos (bloqueante)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install checkov
+      - name: Checkov - framework secrets
+        run: checkov -d . --framework secrets --compact
+
+  plan:
+    name: Terraform plan (OIDC, opcional)
+    if: ${{ vars.ENABLE_PLAN == 'true' }}
+    needs: [terraform-checks, checkov]    # sin escaneo limpio no hay plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write                     # necesario para federacion OIDC
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC, sin secretos de larga duracion)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Llave SSH efimera para el plan
+        run: |
+          mkdir -p "$HOME/.ssh"
+          ssh-keygen -t rsa -b 4096 -N "" -f "$HOME/.ssh/id_rsa" -q
+
+      # Sin backend remoto: el estado esta detras de un firewall por IP. Muestra el plan
+      # "desde cero" (como en la demo); no refresca el Key Vault ni el Storage reales.
+      - name: plan
+        run: |
+          terraform init -backend=false -input=false
+          terraform plan -input=false \
+            -var "my_ip=[\"$(curl -s https://api.ipify.org)\"]" \
+            -var "alert_email=ci@example.com" \
+            -out tfplan

@@ -1,0 +1,8 @@
+# Copie a backend.hcl con los valores que imprime `terraform output` en infra/bootstrap.
+# No contiene secretos: la autenticacion es por Entra ID (az login).
+#   terraform init -backend-config=backend.hcl
+resource_group_name  = "rg-caribeshop-tfstate"
+storage_account_name = "stcaribeshopXXXXX"
+container_name       = "tfstate"
+key                  = "caribeshop.tfstate"
+use_azuread_auth     = true

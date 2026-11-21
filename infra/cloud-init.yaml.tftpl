@@ -1,0 +1,61 @@
+#cloud-config
+# D3: configuracion reproducible al arrancar. No contiene secretos: solo el
+# NOMBRE del Key Vault. El token lo emite la plataforma (IMDS) y expira solo.
+write_files:
+  - path: /opt/caribeshop/app.py
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${app_b64}
+  - path: /usr/local/bin/leer-secreto.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Demostracion por Run Command (de demo-seguridad). Muestra solo longitud y huella.
+      # 1) Token de la identidad administrada (IMDS, solo accesible desde la VM)
+      TOKEN=$(curl -s -H "Metadata: true" \
+        "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fvault.azure.net" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+      echo "Token obtenido de la identidad administrada (longitud: $(echo -n $TOKEN | wc -c))"
+      # 2) Lectura del secreto con ese token
+      curl -s -H "Authorization: Bearer $TOKEN" \
+        "https://${key_vault_name}.vault.azure.net/secrets/${secret_name}?api-version=7.4" \
+        | python3 -c '
+      import sys, json, hashlib
+      d = json.load(sys.stdin)
+      v = d.get("value")
+      if v:
+          print("Secreto leido OK desde Key Vault. Longitud:", len(v), "| sha256:", hashlib.sha256(v.encode()).hexdigest()[:8])
+      else:
+          print("ERROR:", json.dumps(d, indent=2))
+      '
+  - path: /etc/systemd/system/caribeshop.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=CaribeShop app
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Environment=APP_PORT=80
+      Environment=KEY_VAULT_NAME=${key_vault_name}
+      Environment=SECRET_NAME=${secret_name}
+      ExecStart=/usr/bin/python3 /opt/caribeshop/app.py
+      Restart=always
+      RestartSec=2
+      DynamicUser=yes
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      PrivateTmp=yes
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - mkdir -p /var/lib/caribeshop
+  - systemctl daemon-reload
+  - systemctl enable --now caribeshop.service

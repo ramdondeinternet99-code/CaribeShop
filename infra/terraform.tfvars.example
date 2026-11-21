@@ -1,0 +1,15 @@
+# Copie a terraform.tfvars (esta ignorado por Git) y complete los valores.
+# IPs publicas desde donde ejecutara terraform (una por red: casa, universidad...):
+#   curl -s ifconfig.me
+my_ip       = ["203.0.113.10"]
+alert_email = "integrante@correo.com"
+
+# Opcionales (valores por defecto entre parentesis)
+# ssh_public_key_path = "~/.ssh/id_rsa.pub"
+# location            = "eastus2"         # debe tener zonas de disponibilidad
+# vm_size             = "Standard_B1s"
+# zones               = ["1", "2", "3"]
+# min_instances       = 2
+# max_instances       = 4                 # revise: az vm list-usage -l eastus2 -o table
+# scale_out_cpu       = 60
+# scale_in_cpu        = 25
