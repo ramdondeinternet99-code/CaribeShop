@@ -1,43 +1,32 @@
-# CaribeShop - plataforma segura, escalable y altamente disponible en Azure
+# CaribeShop - plataforma segura, escalable y highly disponible en Azure
 
-Taller integrador de *Infraestructura para TI* (UTB). Todo se despliega como código con
-Terraform y se valida con un pipeline DevSecOps (GitHub Actions + Checkov), pruebas de
-carga (Locust) y pruebas de falla.
+Taller integrador de *Infraestructura para TI* (UTB). Todo se despliega como código con Terraform y se valida con un pipeline DevSecOps (GitHub Actions + Checkov), pruebas de carga (Locust) y pruebas de falla.
 
 ## Arquitectura
+
+```mermaid
 flowchart LR
-    Internet(["Internet"]) --> Pip["IP Pública Standard<br/>Zonas 1, 2 y 3"]
-    Pip --> LB["Load Balancer Standard<br/>Sonda /health (5s x 2)"]
-
-    subgraph RG["Resource Group · Azure Policy (Deny)"]
-        direction TB
-
-        subgraph VNet["VNet · snet-app"]
-            NSG["NSG: HTTP y LB<br/>No SSH/RDP · Egress KeyVault"]
-            VMSS["VMSS Ubuntu 22.04<br/>Zonas 1-3 · Min 2 / Max 4<br/>CPU out 60% / in 25%<br/>Sin IP pública · Identidad<br/>/health · /secret-check"]
-        end
-
-        subgraph SecOps["Seguridad y Logs"]
-            KV["Key Vault<br/>RBAC · Purge Protection<br/>Firewall + Secreto exp."]
-            ST["Storage Account<br/>Sin llaves · Firewall"]
-            LA[("Log Analytics<br/>AuditEvent · Alertas")]
-        end
-    end
-
-    GHA["GitHub Actions<br/>fmt · validate · Checkov"]
-
-    LB --> NSG --> VMSS
-    VMSS -->|"Identidad"| KV
-    VMSS -->|"Firewall"| ST
-    KV -.->|"Service Endpoint"| VNet
-    KV --> LA
+    Internet(["Internet"]) --> PIP["IP pública Standard<br/>Zonal-redundante: zonas 1, 2, 3"]
+    PIP --> LB["Load Balancer Standard<br/>Sonda HTTP /health (5 s x 2 fallos)"]
+    LB --> NSG["NSG<br/>HTTP desde Internet y sonda LB<br/>SSH/RDP denegados · Egress solo AzureKeyVault"]
+    NSG --> VMSS["VM Scale Set Ubuntu 22.04<br/>Zonas 1, 2 y 3 · Min 2 / Max 4<br/>Autoscale CPU: 60% out / 25% in<br/>Reparación automática · Sin IP pública<br/>Identidad adm. · cloud-init sin secretos"]
+    VMSS --> App["app/app.py<br/>/ (instancia, zona y color) · /api/info (JSON)<br/>/work?ms=N (CPU real) · /health (503 si /var/run/app-unhealthy)<br/>/secret-check (lee secreto, long. y SHA-256 truncado)<br/>Header: X-Served-By"]
+    App --> KV["Key Vault<br/>RBAC · Purge protection<br/>Firewall: snet-app + IP operador<br/>Secreto con expiración"]
+    App --> ST["Storage Account<br/>Sin llaves · Firewall activo"]
+    KV -.->|"Service Endpoint Microsoft.KeyVault"| VMSS
+    KV --> LA[("Log Analytics<br/>Diagnostic settings: AuditEvent<br/>Storage · Autoscale · Alertas correo")]
     ST --> LA
-    GHA -.->|"CI/CD"| RG
+    GHA["GitHub Actions<br/>fmt · validate · Checkov (bloqueante)"] -.->|"Azure Policy (Deny) en RG"| VMSS
+```
 
-Endpoints de la app (`app/app.py`, solo librería estándar de Python; integra la app de `demo-escalamiento` y
-la lectura del secreto de `demo-seguridad`):
-`/` (instancia, zona y color) · `/api/info` (JSON) · `/work?ms=N` (consume ~N ms de CPU real: carga parad
-administrada y devuelve **solo** longitud y SHA-256 truncado). Todas las respuestas llevan `X-Served-By`.
+Endpoints de la app (`app/app.py`, solo librería estándar de Python; integra la app de `demo-escalamiento` y la lectura del secreto de `demo-seguridad`):
+- `/` (instancia, zona y color)
+- `/api/info` (JSON)
+- `/work?ms=N` (consume ~N ms de CPU real; carga para autoscale)
+- `/health` (sonda; devuelve `503` si existe `/var/run/app-unhealthy`)
+- `/secret-check` (lee el secreto con la identidad administrada y devuelve **solo** longitud y SHA-256 truncado)
+
+Todas las respuestas llevan la cabecera `X-Served-By`.
 
 ## Estructura del repositorio
 
@@ -54,8 +43,7 @@ administrada y devuelve **solo** longitud y SHA-256 truncado). Todas las respues
 
 ## Requisitos previos
 
-Azure CLI con sesión iniciada, Terraform >= 1.6, Python 3, `pip install locust checkov matplotlib`,
-llave SSH (`ssh-keygen -t rsa -b 4096`) y rol **Owner** sobre la suscripción (se crean roles y una política).
+Azure CLI con sesión iniciada, Terraform >= 1.6, Python 3, `pip install locust checkov matplotlib`, llave SSH (`ssh-keygen -t rsa -b 4096`) y rol **Owner** sobre la suscripción (se crean roles y una política).
 
 ```bash
 az login
@@ -87,8 +75,7 @@ terraform output app_url
 curl $(terraform output -raw app_url)/secret-check
 ```
 
-> Nota: si cambia `cloud-init` o `app.py`, el VMSS usa `upgrade_mode = "Manual"`: las instancias
-> existentes no se actualizan solas. Reimagine con `az vmss update-instances -g <rg> -n <vmss> --instance-ids "*"`.
+> Nota: si cambia `cloud-init` o `app.py`, el VMSS usa `upgrade_mode = "Manual"`: las instancias existentes no se actualizan solas. Reimagine con `az vmss update-instances -g <rg> -n <vmss> --instance-ids "*"`.
 
 ## Cómo destruir
 
@@ -114,8 +101,7 @@ El Key Vault queda en soft-delete (protección de purga, sin costo).
 | `scale_in_window_min`, `scale_in_cooldown_min` | no | `5`, `5` |
 | `enable_tag_policy` | no | `false`; asigna además la política integrada de etiqueta obligatoria |
 
-Ningún valor sensible va en el código: el secreto se genera con `random_password`, vive en Key Vault y la
-app lo lee en tiempo de ejecución con su identidad administrada.
+Ningún valor sensible va en el código: el secreto se genera con `random_password`, vive en Key Vault y la app lo lee en tiempo de ejecución con su identidad administrada.
 
 ## Pruebas
 
@@ -149,4 +135,3 @@ scripts/evidencias.sh
 - [ ] Pipeline bloqueante en PR (fmt, validate, Checkov terraform + secrets)
 - [ ] Evidencias de scale-out, scale-in, falla lógica y falla abrupta con métricas
 - [ ] Recursos destruidos (`terraform destroy`) y verificados en el portal
-# CaribeShop
