@@ -8,7 +8,7 @@ carga (Locust) y pruebas de falla.
 
 ```mermaid
 flowchart TB
-    Internet(["🌐 Internet"])
+    Internet([" Internet"])
     Pip["IP pública Standard<br/>(Zonal-redundante: Zonas 1, 2, 3)"]
     LB["Load Balancer Standard<br/>Sonda HTTP /health (5 s × 2 fallos)"]
 
@@ -25,6 +25,7 @@ flowchart TB
                 VM2["Instancia VMSS<br/>Sin IP pública · Identidad administrada<br/>cloud-init (sin secretos)"]
             end
 
+            Endpoints["Endpoints de la app<br/>/health (503 si existe /var/run/app-unhealthy)<br/>/secret-check (lee secreto con identidad)"]
             Autoscale["Autoscale CPU: out ≥ 60% / in ≤ 25%<br/>Min 2 / Max 4 · Reparación automática"]
         end
 
@@ -38,6 +39,7 @@ flowchart TB
     Internet --> Pip --> LB
     LB -->|"Sonda /health y tráfico HTTP"| NSG
     NSG --> VMSS
+    VMSS --- Endpoints
     Autoscale -.->|"Escala / repara"| VMSS
 
     VMSS -->|"Identidad administrada (/secret-check)"| KV
