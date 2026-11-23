@@ -128,7 +128,8 @@ jobs:
       # "desde cero" (como en la demo); no refresca el Key Vault ni el Storage reales.
       - name: plan
         run: |
-          terraform init -backend=false -input=false
+          printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+          terraform init -input=false
           terraform plan -input=false \
             -var "my_ip=[\"$(curl -s https://api.ipify.org)\"]" \
             -var "alert_email=ci@example.com" \
