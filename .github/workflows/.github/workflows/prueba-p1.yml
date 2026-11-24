@@ -20,8 +20,6 @@ on:
 jobs:
   locust-p1:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +35,7 @@ jobs:
         env:
           APP_URL: ${{ vars.APP_URL }}
         run: |
+          mkdir -p evidencias/p1
           locust -f tests/locustfile_capacidad.py --headless \
             --host "$APP_URL" \
             --csv evidencias/p1/capacidad \
@@ -48,6 +47,7 @@ jobs:
           APP_URL: ${{ vars.APP_URL }}
           PEAK_USERS: ${{ inputs.peak_users }}
         run: |
+          mkdir -p evidencias/p1
           locust -f tests/locustfile.py --headless \
             --host "$APP_URL" \
             --csv evidencias/p1/escalonada \
