@@ -1,0 +1,66 @@
+Nombre        Protocolo    Puerto    Ruta     Intervalo    Umbral
+------------  -----------  --------  -------  -----------  --------
+probe-health  Http         80        /health  5            2
+--- DipAvailability (Health Probe Status) ultima hora ---
+Timestamp             Name                 Average
+--------------------  -------------------  ---------
+2026-11-24T02:21:00Z  Health Probe Status  0.0
+2026-11-24T02:22:00Z  Health Probe Status  90.0
+2026-11-24T02:23:00Z  Health Probe Status  100.0
+2026-11-24T02:24:00Z  Health Probe Status  100.0
+2026-11-24T02:25:00Z  Health Probe Status  100.0
+2026-11-24T02:26:00Z  Health Probe Status  100.0
+2026-11-24T02:27:00Z  Health Probe Status  100.0
+2026-11-24T02:28:00Z  Health Probe Status  100.0
+2026-11-24T02:29:00Z  Health Probe Status  100.0
+2026-11-24T02:30:00Z  Health Probe Status  100.0
+2026-11-24T02:31:00Z  Health Probe Status  100.0
+2026-11-24T02:32:00Z  Health Probe Status  100.0
+2026-11-24T02:33:00Z  Health Probe Status  100.0
+2026-11-24T02:34:00Z  Health Probe Status  100.0
+2026-11-24T02:35:00Z  Health Probe Status  100.0
+2026-11-24T02:36:00Z  Health Probe Status  100.0
+2026-11-24T02:37:00Z  Health Probe Status  100.0
+2026-11-24T02:38:00Z  Health Probe Status  100.0
+2026-11-24T02:39:00Z  Health Probe Status  100.0
+2026-11-24T02:40:00Z  Health Probe Status  100.0
+2026-11-24T02:41:00Z  Health Probe Status  100.0
+2026-11-24T02:42:00Z  Health Probe Status  100.0
+2026-11-24T02:43:00Z  Health Probe Status  100.0
+2026-11-24T02:44:00Z  Health Probe Status  100.0
+2026-11-24T02:45:00Z  Health Probe Status  100.0
+2026-11-24T02:46:00Z  Health Probe Status  100.0
+2026-11-24T02:47:00Z  Health Probe Status  100.0
+2026-11-24T02:48:00Z  Health Probe Status  100.0
+2026-11-24T02:49:00Z  Health Probe Status  100.0
+2026-11-24T02:50:00Z  Health Probe Status  100.0
+2026-11-24T02:51:00Z  Health Probe Status  100.0
+2026-11-24T02:52:00Z  Health Probe Status  100.0
+2026-11-24T02:53:00Z  Health Probe Status  100.0
+2026-11-24T02:54:00Z  Health Probe Status  100.0
+2026-11-24T02:55:00Z  Health Probe Status  100.0
+2026-11-24T02:56:00Z  Health Probe Status  100.0
+2026-11-24T02:57:00Z  Health Probe Status  100.0
+2026-11-24T02:58:00Z  Health Probe Status  100.0
+2026-11-24T02:59:00Z  Health Probe Status  100.0
+2026-11-24T03:00:00Z  Health Probe Status  100.0
+2026-11-24T03:01:00Z  Health Probe Status  100.0
+2026-11-24T03:02:00Z  Health Probe Status  100.0
+2026-11-24T03:03:00Z  Health Probe Status  100.0
+2026-11-24T03:04:00Z  Health Probe Status  100.0
+2026-11-24T03:05:00Z  Health Probe Status  100.0
+2026-11-24T03:06:00Z  Health Probe Status  100.0
+2026-11-24T03:07:00Z  Health Probe Status  100.0
+2026-11-24T03:08:00Z  Health Probe Status  100.0
+2026-11-24T03:09:00Z  Health Probe Status  100.0
+2026-11-24T03:10:00Z  Health Probe Status  100.0
+2026-11-24T03:11:00Z  Health Probe Status  100.0
+2026-11-24T03:12:00Z  Health Probe Status  100.0
+2026-11-24T03:13:00Z  Health Probe Status  100.0
+2026-11-24T03:14:00Z  Health Probe Status  100.0
+2026-11-24T03:15:00Z  Health Probe Status  100.0
+2026-11-24T03:16:00Z  Health Probe Status  100.0
+2026-11-24T03:17:00Z  Health Probe Status  100.0
+2026-11-24T03:18:00Z  Health Probe Status  100.0
+2026-11-24T03:19:00Z  Health Probe Status  100.0
+2026-11-24T03:20:00Z  Health Probe Status  100.0

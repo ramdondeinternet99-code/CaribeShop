@@ -1,0 +1,9 @@
+22:  backend "azurerm" {}
+--- .gitignore (estado y tfvars) ---
+2:*.tfstate
+3:*.tfstate.*
+10:*.tfvars
+11:!*.tfvars.example
+--- archivos de estado/variables rastreados por Git (debe estar vacio) ---
+(ninguno)
+--- historial: estado o tfvars alguna vez commiteados (debe estar vacio) ---

@@ -1,0 +1,4 @@
+Instancia    Nombre             Zona    Estado
+-----------  -----------------  ------  ---------
+0            vmss-caribeshop_0  2       Succeeded
+2            vmss-caribeshop_2  1       Succeeded

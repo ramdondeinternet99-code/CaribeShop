@@ -1,0 +1,3 @@
+Rol                     Alcance
+----------------------  ----------------------------------------------------------------------------------------------------------------------------------------
+Key Vault Secrets User  /subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/resourceGroups/rg-caribeshop/providers/Microsoft.KeyVault/vaults/kv-caribeshop-zakgx

@@ -1,0 +1,41 @@
+ERROR: (RequestDisallowedByPolicy) Resource 'stpol1199427246' was disallowed by policy. Policy identifiers: '[{"policyAssignment":{"name":"CaribeShop - No blobs publicos","id":"/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/resourceGroups/rg-caribeshop/providers/Microsoft.Authorization/policyAssignments/deny-blobs-publicos"},"policyDefinition":{"name":"CaribeShop - Denegar Storage con acceso publico a blobs","id":"/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/providers/Microsoft.Authorization/policyDefinitions/deny-blobs-publicos-caribeshop","version":"1.0.0"}}]'.
+Code: RequestDisallowedByPolicy
+Message: Resource 'stpol1199427246' was disallowed by policy. Policy identifiers: '[{"policyAssignment":{"name":"CaribeShop - No blobs publicos","id":"/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/resourceGroups/rg-caribeshop/providers/Microsoft.Authorization/policyAssignments/deny-blobs-publicos"},"policyDefinition":{"name":"CaribeShop - Denegar Storage con acceso publico a blobs","id":"/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/providers/Microsoft.Authorization/policyDefinitions/deny-blobs-publicos-caribeshop","version":"1.0.0"}}]'.
+Target: stpol1199427246
+Additional Information:Type: PolicyViolation
+Info: {
+    "evaluationDetails": {
+        "evaluatedExpressions": [
+            {
+                "result": "True",
+                "expressionKind": "Field",
+                "expression": "type",
+                "path": "type",
+                "expressionValue": "Microsoft.Storage/storageAccounts",
+                "targetValue": "Microsoft.Storage/storageAccounts",
+                "operator": "Equals"
+            },
+            {
+                "result": "True",
+                "expressionKind": "Field",
+                "expression": "Microsoft.Storage/storageAccounts/allowBlobPublicAccess",
+                "path": "properties.allowBlobPublicAccess",
+                "expressionValue": true,
+                "targetValue": "False",
+                "operator": "NotEquals"
+            }
+        ]
+    },
+    "policyDefinitionId": "/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/providers/Microsoft.Authorization/policyDefinitions/deny-blobs-publicos-caribeshop",
+    "policyDefinitionName": "deny-blobs-publicos-caribeshop",
+    "policyDefinitionDisplayName": "CaribeShop - Denegar Storage con acceso publico a blobs",
+    "policyDefinitionVersion": "1.0.0",
+    "policyDefinitionEffect": "deny",
+    "policyAssignmentId": "/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/resourceGroups/rg-caribeshop/providers/Microsoft.Authorization/policyAssignments/deny-blobs-publicos",
+    "policyAssignmentName": "deny-blobs-publicos",
+    "policyAssignmentDisplayName": "CaribeShop - No blobs publicos",
+    "policyAssignmentScope": "/subscriptions/e1aaa063-85cc-4877-afa9-be5e38d7c195/resourceGroups/rg-caribeshop",
+    "policyAssignmentParameters": {},
+    "policyExemptionIds": [],
+    "policyEnrollmentIds": []
+}

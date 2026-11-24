@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Taller Integrador CaribeShop - Informe</title>
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: #24292e;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+}
+h1, h2, h3 {
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 0.3em;
+    color: #1a1f2c;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+}
+table, th, td {
+    border: 1px solid #d0d7de;
+}
+th, td {
+    padding: 8px 12px;
+    text-align: left;
+}
+th {
+    background-color: #f6f8fa;
+    font-weight: 600;
+}
+tr:nth-child(even) {
+    background-color: #fcfcfc;
+}
+code {
+    background-color: rgba(175, 184, 193, 0.2);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 85%;
+}
+pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow: auto;
+    border: 1px solid #d0d7de;
+}
+pre code {
+    background: none;
+    padding: 0;
+}
+blockquote {
+    margin: 0;
+    padding: 0 1em;
+    color: #57606a;
+    border-left: 0.25em solid #d0d7de;
+}
+hr {
+    height: 0.25em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: #d0d7de;
+    border: 0;
+}
+@media print {
+    body {
+        max-width: 100%;
+        margin: 0;
+        padding: 10mm;
+    }
+    pre, table {
+        page-break-inside: avoid;
+    }
+}
+</style>
+</head>
+<body>
+<hr />
+<p>title: "Taller integrador: plataforma segura, escalable y altamente disponible - Caso CaribeShop"
+subtitle: "Infraestructura para TI · UTB"
+author: "Juan J. Martínez y equipo de trabajo"
+date: "Noviembre 2026"</p>
+<hr />
+<h1 id="1-arquitectura-y-decisiones-de-diseno">1. Arquitectura y decisiones de diseño</h1>
+<pre><code class="language-mermaid">flowchart LR
+    Internet([&quot;Internet&quot;]) --&gt; PIP[&quot;IP pública Standard&lt;br/&gt;Zonal-redundante: zonas 1, 2, 3&quot;]
+    PIP --&gt; LB[&quot;Load Balancer Standard&lt;br/&gt;Sonda HTTP /health (5 s x 2 fallos)&quot;]
+    LB --&gt; NSG[&quot;NSG&lt;br/&gt;HTTP desde Internet y sonda LB&lt;br/&gt;SSH/RDP denegados · Egress solo AzureKeyVault&quot;]
+    NSG --&gt; VMSS[&quot;VM Scale Set Ubuntu 22.04&lt;br/&gt;Zonas 1, 2 y 3 · Min 2 / Max 4&lt;br/&gt;Autoscale CPU: 60% out / 25% in&lt;br/&gt;Reparación automática · Sin IP pública&lt;br/&gt;Identidad adm. · cloud-init sin secretos&quot;]
+    VMSS --&gt; App[&quot;app/app.py&lt;br/&gt;/ (instancia, zona y color) · /api/info (JSON)&lt;br/&gt;/work?ms=N (CPU real) · /health (503 si /var/run/app-unhealthy)&lt;br/&gt;/secret-check (lee secreto, long. y SHA-256 truncado)&lt;br/&gt;Header: X-Served-By&quot;]
+    App --&gt; KV[&quot;Key Vault&lt;br/&gt;RBAC · Purge protection&lt;br/&gt;Firewall: snet-app + IP operador&lt;br/&gt;Secreto con expiración&quot;]
+    App --&gt; ST[&quot;Storage Account&lt;br/&gt;Sin llaves · Firewall activo&quot;]
+    KV -.-&gt;|&quot;Service Endpoint Microsoft.KeyVault&quot;| VMSS
+    KV --&gt; LA[(&quot;Log Analytics&lt;br/&gt;Diagnostic settings: AuditEvent&lt;br/&gt;Storage · Autoscale · Alertas correo&quot;)]
+    ST --&gt; LA
+    GHA[&quot;GitHub Actions&lt;br/&gt;fmt · validate · Checkov (bloqueante)&quot;] -.-&gt;|&quot;Azure Policy (Deny) en RG&quot;| VMSS
+</code></pre>
+<p><strong>Decisiones de diseño</strong></p>
+<table>
+<thead>
+<tr>
+<th>Decisión</th>
+<th>Alternativa descartada</th>
+<th>Justificación</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Load Balancer Standard (L4)</td>
+<td>Application Gateway con WAF</td>
+<td>Cumple con los requerimientos de seguridad y escalamiento con menor costo (~USD 18/mes vs ~USD 180/mes). Se documenta como mejora futura para producción (terminación HTTPS + WAF).</td>
+</tr>
+<tr>
+<td>VMSS Uniform en zonas 1, 2 y 3 (<code>zone_balance = false</code>, mejor esfuerzo), min 2</td>
+<td>Una sola VM / un solo conjunto de disponibilidad</td>
+<td>Tolera la caída de una zona completa (E1) y la falla abrupta de una instancia individual.</td>
+</tr>
+<tr>
+<td>Sonda HTTP <code>/health</code> dedicada, 5 s × 2 fallos</td>
+<td>Sonda TCP al puerto 80</td>
+<td>La TCP no detecta una app colgada que mantenga el socket abierto; <code>/health</code> valida el estado lógico de la aplicación (probado en P2.1). Tiempo de detección en prueba: 3.8 s.</td>
+</tr>
+<tr>
+<td>Autoscale por CPU con histéresis 60 % / 25 % (banda muerta de 35 puntos)</td>
+<td>Umbrales iguales o cercanos</td>
+<td>Evita <em>flapping</em> (ciclos repetidos e inestables de creación y destrucción de VMs). Ventana de 5 min en ambas reglas; cooldown de 3 min al subir (reaccionar rápido) y 5 min al bajar (liberar recursos con cautela).</td>
+</tr>
+<tr>
+<td>Identidad administrada + Key Vault RBAC</td>
+<td>Secreto en variables, cloud-init o repositorio</td>
+<td>La credencial la emite la plataforma Azure vía IMDS y expira automáticamente; no hay contraseñas en disco ni en el código (S3).</td>
+</tr>
+<tr>
+<td>Rol <code>Key Vault Secrets User</code> al VMSS</td>
+<td><code>Contributor</code> o acceso por <em>access policies</em></td>
+<td>Solo lectura de secretos: principio de mínimo privilegio estricto (S4).</td>
+</tr>
+<tr>
+<td>Firewall de Key Vault (subred + IP operador)</td>
+<td>Acceso público abierto</td>
+<td>Demuestra que identidad y red son controles independientes y complementarios (P3.1).</td>
+</tr>
+<tr>
+<td>Egress denegado excepto <code>AzureKeyVault</code></td>
+<td>Salida libre a Internet</td>
+<td>Si un atacante ejecuta código arbitrario, no puede exfiltrar datos hacia servidores externos ni descargar binarios maliciosos (P3.2). Python viene en la imagen base.</td>
+</tr>
+<tr>
+<td>Azure Policy Deny a nivel de grupo de recursos</td>
+<td>Solo escaneo en pipeline</td>
+<td>Control preventivo permanente en el plano de control (ARM) que rige a todos los operadores y herramientas (S5, pregunta 5).</td>
+</tr>
+<tr>
+<td>App aprovisionada vía cloud-init (base64)</td>
+<td>Configuración manual por SSH</td>
+<td>Garantiza despliegues 100 % reproducibles, inmutables y sin puertos de administración remota expuestos (D3).</td>
+</tr>
+<tr>
+<td>Storage Account de aplicación sin llaves compartidas y con firewall</td>
+<td>Omitirla</td>
+<td>Cumple la arquitectura de referencia con RBAC exclusivo de Entra ID, auditoría de blobs y versionado.</td>
+</tr>
+<tr>
+<td>Trabajo de CPU calibrado en <code>/work</code></td>
+<td>Bucle por tiempo de reloj de la demo original</td>
+<td>Un bucle de tiempo se ve afectado por la concurrencia; un número fijo de operaciones criptográficas por petición garantiza que el costo computacional por request sea constante, permitiendo medir la capacidad real (P1.1).</td>
+</tr>
+<tr>
+<td>Región <code>eastus2</code>, Standard_D2als_v7</td>
+<td>Región más cercana sin zonas</td>
+<td>Disponibilidad de zonas de disponibilidad (1, 2 y 3), cuota disponible y compatibilidad con Azure for Students.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="2-trazabilidad-de-requisitos">2. Trazabilidad de requisitos</h1>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Archivo / recurso Terraform</th>
+<th>Evidencia recolectada</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S1</td>
+<td><code>infra/providers.tf</code> (<code>backend "azurerm"</code>), <code>infra/bootstrap/main.tf</code>, <code>.gitignore</code> (sin <code>.tfvars</code>/estado)</td>
+<td><code>evidencias/auto/S1_backend_y_git.txt</code>, <code>evidencias/capturas/S1.png</code> (historial de Git limpio, backend remoto en Storage Account con firewall y TLS 1.2)</td>
+</tr>
+<tr>
+<td>S2</td>
+<td><code>infra/network.tf</code> (NSG, <code>default_outbound_access_enabled = false</code>); <code>compute.tf</code> (VMSS sin <code>public_ip_address</code>)</td>
+<td><code>evidencias/auto/S2_red_nsg.txt</code> (lista de IP públicas vacía; NSG solo permite HTTP/80 y AzureLoadBalancer)</td>
+</tr>
+<tr>
+<td>S3</td>
+<td><code>infra/keyvault.tf</code> (<code>azurerm_key_vault</code>, <code>azurerm_key_vault_secret</code>, expiración a 90 días); <code>app/app.py</code> (<code>/secret-check</code>); <code>cloud-init</code> (<code>leer-secreto.sh</code>)</td>
+<td><code>evidencias/auto/S3_secret_check.txt</code> y <code>evidencias/auto/S3_leer_secreto_runcommand.txt</code> (lectura exitosa, huella SHA-256 <code>bff71839</code>, longitud 24, sin exponer el valor)</td>
+</tr>
+<tr>
+<td>S4</td>
+<td><code>infra/keyvault.tf</code> (<code>azurerm_role_assignment.vmss_kv_reader</code>)</td>
+<td><code>evidencias/auto/S4_roles_vmss.txt</code> (rol asignado únicamente: <code>Key Vault Secrets User</code> sobre el scope del vault)</td>
+</tr>
+<tr>
+<td>S5</td>
+<td><code>infra/policy.tf</code> (política <code>deny</code> sobre <code>allowBlobPublicAccess</code>)</td>
+<td><code>evidencias/auto/S5_policy_deny.txt</code> (rechazo explícito <code>RequestDisallowedByPolicy</code> al intentar violar la política)</td>
+</tr>
+<tr>
+<td>S6</td>
+<td><code>infra/monitoring.tf</code> (<code>diag-keyvault</code>, categoría <code>AuditEvent</code>, tabla <code>AZKVAuditLogs</code>)</td>
+<td><code>evidencias/auto/S6_kql_secretos.txt</code> (auditoría KQL registrando operaciones <code>SecretGet</code> ejecutadas por la identidad <code>9ec13597-7672-49cd-ad6e-f6b9e592b1a1</code> del VMSS)</td>
+</tr>
+<tr>
+<td>E1</td>
+<td><code>infra/compute.tf</code> (<code>zones = ["1", "2", "3"]</code>, <code>zone_balance = false</code>, <code>instances = 2</code>)</td>
+<td><code>evidencias/auto/E1_instancias_zonas.txt</code> (<code>vmss-caribeshop_2</code> en Zona 1, <code>vmss-caribeshop_3</code> en Zona 2)</td>
+</tr>
+<tr>
+<td>E2</td>
+<td><code>infra/compute.tf</code> (<code>azurerm_lb_probe.health</code> en <code>/health</code>, 5s, umbral 2)</td>
+<td><code>evidencias/auto/E2_sonda.txt</code> (sonda configurada y métrica <code>DipAvailability</code> al 100 %)</td>
+</tr>
+<tr>
+<td>E3</td>
+<td><code>infra/compute.tf</code> (<code>azurerm_monitor_autoscale_setting.app</code>, <code>ignore_changes = [instances]</code>)</td>
+<td><code>evidencias/auto/E3_autoscale.txt</code>, <code>evidencias/auto/E3_autoscale_eventos_cpu.txt</code>, y reportes en <code>evidencias/p1/</code></td>
+</tr>
+<tr>
+<td>E4</td>
+<td><code>infra/compute.tf</code> (<code>automatic_instance_repair</code>)</td>
+<td><code>evidencias/auto/E4_instancias.txt</code> y <code>evidencias/auto/E4_instancias_despues.txt</code> (instancia 0 eliminada y reemplazada automáticamente por instancia 3 en 69 s)</td>
+</tr>
+<tr>
+<td>E5</td>
+<td><code>infra/monitoring.tf</code> (<code>alerta-sonda-lb-caribeshop</code>, <code>alerta-cpu-sostenida-caribeshop</code>, <code>ag-caribeshop</code>)</td>
+<td><code>evidencias/auto/E5_alertas.txt</code> (alertas métricas habilitadas con vinculación a grupo de acción por correo)</td>
+</tr>
+<tr>
+<td>D1</td>
+<td><code>.github/workflows/iac-seguridad.yml</code></td>
+<td><code>evidencias/capturas/D1.png</code> (PR #2 bloqueado por Checkov ante regla SSH abierta) y <code>evidencias/capturas/PR1.png</code> (PR #1 exitoso)</td>
+</tr>
+<tr>
+<td>D2</td>
+<td><code>#checkov:skip</code> en archivos <code>.tf</code> con justificación técnica</td>
+<td><code>evidencias/capturas/D2.png</code> y tabla de riesgos aceptados (sección 5)</td>
+</tr>
+<tr>
+<td>D3</td>
+<td><code>infra/cloud-init.yaml.tftpl</code> (servicio systemd con <code>DynamicUser</code>, app y lectura de secretos)</td>
+<td><code>evidencias/capturas/D3.1.png</code> y <code>evidencias/capturas/D3.2.png</code> (arranque 100 % desatendido sin login manual)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="3-sla-compuesto-estimado">3. SLA compuesto estimado</h1>
+<p>Ruta crítica de la tienda: <strong>IP pública Standard → Load Balancer Standard → VMSS en ≥ 2 zonas de disponibilidad</strong>.</p>
+<p>Valores oficiales de SLA publicados por Microsoft para componentes de infraestructura:</p>
+<table>
+<thead>
+<tr>
+<th>Componente</th>
+<th>SLA individual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IP pública Standard</td>
+<td>99,99 %</td>
+</tr>
+<tr>
+<td>Load Balancer Standard</td>
+<td>99,99 %</td>
+</tr>
+<tr>
+<td>VMs en ≥ 2 zonas de disponibilidad</td>
+<td>99,99 %</td>
+</tr>
+<tr>
+<td>Key Vault (lectura de secretos)</td>
+<td>99,99 %</td>
+</tr>
+<tr>
+<td>Log Analytics, Azure Monitor</td>
+<td>Fuera de la ruta crítica de servicio</td>
+</tr>
+</tbody>
+</table>
+<p>SLA compuesto de la ruta crítica en serie:</p>
+<p>$$SLA_{\text{compuesto}} = 0{,}9999 \times 0{,}9999 \times 0{,}9999 = 0{,}99970 \Rightarrow 99{,}97\ \%$$</p>
+<p>Indisponibilidad máxima acumulada permitida al mes:</p>
+<p>$$43\,200\ \text{minutos/mes} \times (1 - 0{,}99970) = 43\,200 \times 0{,}0003 \approx 13{,}0\ \text{minutos/mes}$$</p>
+<p>Si se considera a Azure Key Vault como una dependencia dura en cada petición HTTP:</p>
+<p>$$0{,}9999^4 = 0{,}99960 \Rightarrow 99{,}96\ \% \quad (\approx 17{,}3\ \text{minutos/mes de indisponibilidad máxima})$$</p>
+<p>En la implementación actual, Key Vault es una dependencia blanda: la aplicación únicamente lo consulta en el endpoint de verificación <code>/secret-check</code>.</p>
+<p><strong>Contraste con la disponibilidad empírica medida en P2:</strong>
+- <strong>Falla lógica (P2.1):</strong> Disponibilidad medida del <strong>100 %</strong> (0 errores en 450 peticiones). La sonda HTTP detectó la degradación en 3.8 s y el balanceador enrutó todo el tráfico a la instancia restante.
+- <strong>Falla abrupta (P2.2):</strong> Disponibilidad medida del <strong>95.63 %</strong> en la ventana de 120 s (16 peticiones fallidas en un intervalo de 3.0 s). La auto-reparación restauró la capacidad total en 69 s.</p>
+<hr />
+<h1 id="4-resultados-de-las-pruebas">4. Resultados de las pruebas</h1>
+<h2 id="p1-carga-y-escalamiento">P1. Carga y escalamiento</h2>
+<p><strong>P1.1 Capacidad de una instancia</strong> (medida con <code>tests/locustfile_capacidad.py</code> contra <code>/work?ms=150</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Escalón (usuarios concurrentes)</th>
+<th>Throughput (RPS)</th>
+<th>Latencia p95 (ms)</th>
+<th>Fallos</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>0.0</td>
+<td>0.0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1.4</td>
+<td>340</td>
+<td>0</td>
+</tr>
+<tr>
+<td>6</td>
+<td>3.1</td>
+<td>460</td>
+<td>0</td>
+</tr>
+<tr>
+<td>8</td>
+<td>4.4</td>
+<td>460</td>
+<td>0</td>
+</tr>
+<tr>
+<td>10</td>
+<td>5.9</td>
+<td>770</td>
+<td>0</td>
+</tr>
+<tr>
+<td>12</td>
+<td>7.3</td>
+<td>590</td>
+<td>0</td>
+</tr>
+<tr>
+<td>14</td>
+<td>7.7</td>
+<td>1100</td>
+<td>0</td>
+</tr>
+<tr>
+<td>16</td>
+<td>9.6</td>
+<td>1200</td>
+<td>0</td>
+</tr>
+<tr>
+<td>18</td>
+<td>9.7</td>
+<td>1500</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Capacidad máxima sostenible con latencia p95 &lt; 500 ms: <strong>$C_{500} = 4{,}4$ RPS</strong> (escalón de 8 usuarios).</li>
+<li>Capacidad máxima sostenible con latencia p95 &lt; 1000 ms: <strong>$C = 7{,}3$ RPS</strong> (escalón de 12 usuarios).</li>
+<li>A partir de 14 usuarios la latencia p95 supera 1.0 s ($1100$ ms) debido a la saturación del core de cómputo ejecutando operaciones criptográficas intensivas en <code>/work</code>. El número de fallos se mantuvo en 0 en todos los escalones.</li>
+<li>Archivos generados: <code>evidencias/p1/capacidad.html</code>, <code>evidencias/p1/capacidad_stats.csv</code> y <code>evidencias/p1/capacidad_stats_history.csv</code>.</li>
+</ul>
+<p><strong>P1.2 y P1.3 Prueba escalonada</strong> (perfil de 35 minutos con <code>PEAK_USERS = 40</code>, <code>TRABAJO_MS = 150</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Métrica de escalamiento</th>
+<th>Valor medido / analizado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tiempo desde que la CPU supera el 60 % hasta la nueva instancia en servicio</td>
+<td>~7 - 8 minutos</td>
+</tr>
+<tr>
+<td>Instancias en el pico de demanda</td>
+<td>4 instancias</td>
+</tr>
+<tr>
+<td>Tiempo hasta el primer scale-in tras el descenso de carga</td>
+<td>~10 - 12 minutos</td>
+</tr>
+<tr>
+<td>Latencia p95 antes / durante / después del scale-out</td>
+<td>320 ms / 980 ms / 360 ms</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Análisis de la dinámica de escalamiento:</strong>
+1. <strong>Retardo en el scale-out:</strong> El tiempo total de reacción (~7-8 min) resulta de la suma de: la ventana de evaluación de la regla de métrica (5 min exigidos por Azure Monitor para confirmar el promedio sostenido &gt; 60 %), el tiempo de aprovisionamiento de la máquina virtual por Azure Compute (~60-90 s), la ejecución del script <code>cloud-init</code> (~30 s) y las 2 sondas de salud consecutivas del Load Balancer (~10 s).
+2. <strong>Histéresis y estabilidad:</strong> El umbral de scale-out (60 %) y el umbral de scale-in (25 %) establecen una <strong>banda muerta de 35 puntos porcentuales</strong>. Esto evita el fenómeno de <em>flapping</em>, donde una instancia se crea y se destruye repetidamente ante pequeñas oscilaciones de tráfico.
+3. <strong>Asimetría en cooldowns:</strong> El cooldown de subida (3 min) permite absorber picos rápidamente, mientras que el cooldown de bajada (5 min) junto con un umbral estricto (25 %) asegura que las instancias no se desmantelen prematuramente mientras aún exista demanda residual.</p>
+<hr />
+<h2 id="p2-pruebas-de-falla">P2. Pruebas de falla</h2>
+<table>
+<thead>
+<tr>
+<th>Métrica / Parámetro</th>
+<th>Falla lógica (<code>/health</code> → 503)</th>
+<th>Falla abrupta (instancia eliminada)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Carga de tráfico durante la prueba</td>
+<td>~5 req/s (450 peticiones)</td>
+<td>~3 - 5 req/s (366 peticiones)</td>
+</tr>
+<tr>
+<td>Tiempo hasta dejar de recibir tráfico</td>
+<td><strong>3.8 s</strong> (detección por sonda HTTP)</td>
+<td>Instantáneo</td>
+</tr>
+<tr>
+<td>Peticiones totales en la ventana / fallidas</td>
+<td>450 / 0</td>
+<td>366 / 16</td>
+</tr>
+<tr>
+<td><strong>Porcentaje de error en la ventana</strong></td>
+<td><strong>0.00 %</strong></td>
+<td><strong>4.37 %</strong></td>
+</tr>
+<tr>
+<td>Duración de la ventana con errores</td>
+<td>0 s (sin impacto perceptible)</td>
+<td>3.0 s (entre t0+3.2s y t0+6.2s)</td>
+</tr>
+<tr>
+<td>Tiempo hasta recuperar capacidad mínima</td>
+<td>Inmediato (absorbido por instancia restante)</td>
+<td><strong>69 s</strong> (<code>vmss-caribeshop_3</code> aprovisionada)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Análisis:</strong>
+- <strong>Falla lógica:</strong> Al crearse el archivo bandera <code>/var/run/app-unhealthy</code>, la sonda dedicada del Load Balancer detectó el código 503 en la siguiente evaluación (intervalo de 5 s, 2 fallos requeridos). La instancia dejó de recibir tráfico exactamente a los <strong>3.8 s</strong>. Como la instancia seguía atendiendo conexiones establecidas, ninguna petición de usuario falló (0.00 % de error).
+- <strong>Falla abrupta:</strong> Al eliminarse la instancia en caliente con <code>az vmss delete-instances</code>, las conexiones en tránsito hacia ese host fallaron inmediatamente antes de que el Load Balancer pudiera actualizar su tabla de enrutamiento. Esto provocó 16 errores HTTP concentrados en una pequeña ventana de <strong>3.0 s</strong>. Una vez descartado el backend por el LB, el tráfico se estabilizó al 100 % en la instancia superviviente. La auto-reparación del VMSS detectó que el conteo de instancias sanas cayó por debajo del mínimo (2) y aprovisionó automáticamente <code>vmss-caribeshop_3</code> en la Zona 2, alcanzando estado <em>Succeeded</em> en <strong>69 s</strong>.
+- Gráficos generados: <code>evidencias/p2/monitor_logica.png</code> y <code>evidencias/p2/monitor_abrupta.png</code>.</p>
+<hr />
+<h2 id="p3-pruebas-de-seguridad">P3. Pruebas de seguridad</h2>
+<ol>
+<li><strong>Lectura de secretos desde red no autorizada (P3.1):</strong>
+   El firewall de Azure Key Vault se configuró con acción por defecto <code>Deny</code>, autorizando únicamente la subred interna <code>snet-app</code> (vía Service Endpoint) y la IP pública del operador (<code>var.my_ip</code>). Cuando un usuario autenticado con rol de Administrador intenta leer el secreto desde una red externa (por ejemplo, Azure Cloud Shell con IP dinámica de Microsoft), Azure Key Vault rechaza la conexión con:
+   <code>Client address is not authorized and caller's client ip is not in the allowed ip ranges. Status: 403 Forbidden</code>.
+   <em>Conclusión:</em> La identidad y el perímetro de red son controles ortogonales e independientes; el principio de defensa en profundidad exige ambos.</li>
+<li><strong>Filtrado de salida / Egress (P3.2):</strong>
+   En <code>evidencias/auto/P3_2_egress.txt</code>, la prueba ejecutada en la instancia 0 demuestra:</li>
+<li>Acceso a Internet arbitrario (<code>https://example.com</code>): <strong>BLOQUEADO</strong>.</li>
+<li>Acceso al Service Tag <code>AzureKeyVault</code>: <strong>PERMITIDO</strong> (código HTTP 401 solicitando token de autenticación).</li>
+<li><strong>Política Deny de Azure (P3.3 / S5):</strong>
+   En <code>evidencias/auto/S5_policy_deny.txt</code>, un intento de aprovisionar una cuenta de almacenamiento con acceso anónimo público (<code>--allow-blob-public-access true</code>) es interceptado y bloqueado inmediatamente por la política de gobierno asignada por Terraform (<code>deny-blobs-publicos-caribeshop</code>) con el error <code>RequestDisallowedByPolicy</code>.</li>
+</ol>
+<hr />
+<h1 id="5-riesgos-aceptados-incluye-cada-checkovskip">5. Riesgos aceptados (incluye cada <code>#checkov:skip</code>)</h1>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Control (Checkov)</th>
+<th>Riesgo identificado</th>
+<th>Impacto</th>
+<th>Mitigación y justificación técnica</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td><code>CKV_AZURE_160</code></td>
+<td>HTTP/80 abierto hacia Internet</td>
+<td>Tráfico no cifrado en tránsito</td>
+<td>La tienda web es pública por requerimiento del taller. Mitigación en producción: migrar a Application Gateway con TLS 1.3 y WAF.</td>
+</tr>
+<tr>
+<td>R2</td>
+<td><code>CKV2_AZURE_32</code></td>
+<td>Key Vault sin Private Endpoint</td>
+<td>Superficie en IP pública de Azure</td>
+<td>Se mitiga con Firewall de red (Service Endpoint en subred + IP de operador), RBAC estricto y auditoría Log Analytics.</td>
+</tr>
+<tr>
+<td>R3</td>
+<td><code>CKV_AZURE_97</code></td>
+<td>Sin <em>encryption-at-host</em> en VMSS</td>
+<td>Datos temporales del host sin doble capa</td>
+<td>Discos ya cifrados en reposo por la plataforma. Encryption-at-host requiere registro previo de feature en suscripción.</td>
+</tr>
+<tr>
+<td>R4</td>
+<td><code>CKV_AZURE_95</code></td>
+<td>Sin actualización automática de imagen en VMSS</td>
+<td>Desactualización de parches del SO</td>
+<td>Mitigado con recreación periódica de imágenes inmutables vía CI/CD; <code>upgrade_mode = Rolling</code> en producción.</td>
+</tr>
+<tr>
+<td>R5</td>
+<td><code>CKV2_AZURE_1</code></td>
+<td>Storage de app sin CMK</td>
+<td>Llaves administradas por Microsoft</td>
+<td>Cifrado transparente con llaves gestionadas por plataforma (PMK) con doble cifrado AES-256 habilitado.</td>
+</tr>
+<tr>
+<td>R6</td>
+<td><code>CKV2_AZURE_33</code></td>
+<td>Storage sin Private Endpoint</td>
+<td>Exposición de endpoint público</td>
+<td>Acceso restringido por firewall de Storage (solo subred y operario) y RBAC de Entra ID sin claves de acceso.</td>
+</tr>
+<tr>
+<td>R7</td>
+<td><code>CKV_AZURE_59</code></td>
+<td>Acceso público de red habilitado en Storage</td>
+<td>Exposición accidental si el firewall falla</td>
+<td>Firewall configurado con acción <code>Deny</code> por defecto; desactivarlo por completo requiere Private Link.</td>
+</tr>
+<tr>
+<td>R8</td>
+<td><code>CKV_AZURE_206</code></td>
+<td>Replicación ZRS en lugar de GZRS</td>
+<td>Sin redundancia geográfica</td>
+<td>Resiliencia zonal adecuada para el caso de estudio; en producción nacional se evaluaría GZRS inter-regional.</td>
+</tr>
+<tr>
+<td>R9</td>
+<td><code>CKV_AZURE_33</code></td>
+<td>Sin diagnóstico de Queue Storage</td>
+<td>Sin métricas de colas</td>
+<td>La aplicación CaribeShop no utiliza el servicio de mensajería por colas de Azure Storage.</td>
+</tr>
+<tr>
+<td>R9b</td>
+<td><code>CKV2_AZURE_21</code></td>
+<td>Contenedor sin logging clásico</td>
+<td>Falso positivo de Checkov</td>
+<td>La auditoría moderna de blobs está activa y centralizada en Log Analytics vía Diagnostic Settings (<code>StorageRead</code>).</td>
+</tr>
+<tr>
+<td>B1-B6</td>
+<td><code>CKV2_AZURE_1, 33, 59, 206, 33, 21</code></td>
+<td>Idénticos riesgos en <code>infra/bootstrap/</code></td>
+<td>Estado de Terraform en storage</td>
+<td>Storage de estado endurecida con firewall IP, versionado de blobs, TLS 1.2 y autenticación Entra ID sin claves compartidas.</td>
+</tr>
+<tr>
+<td>R10</td>
+<td>(sin skip)</td>
+<td>Secreto en texto plano en el estado de Terraform</td>
+<td>Exposición si el archivo <code>.tfstate</code> se filtra</td>
+<td>Backend remoto cifrado, control de acceso RBAC estricto, sin claves compartidas y rotación automatizable.</td>
+</tr>
+<tr>
+<td>R11</td>
+<td>(sin skip)</td>
+<td>Despliegue en una sola región (<code>eastus2</code>)</td>
+<td>Caída total si falla toda la región</td>
+<td>Resiliencia zonal 1, 2 y 3; se justifica por presupuesto educativo de taller. Multi-región analizada en pregunta 3.</td>
+</tr>
+<tr>
+<td>R12</td>
+<td>(sin skip)</td>
+<td>Instancias serie B / D limitadas</td>
+<td>Cuota reducida en suscripción estudiantil</td>
+<td>Limitado a 10 vCPUs regionales; monitoreado durante pruebas de carga para evitar consumo imprevisto.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="6-estimacion-de-costo-mensual-en-produccion">6. Estimación de costo mensual en producción</h1>
+<p>Cálculo basado en la Calculadora Oficial de Precios de Azure para la región <code>East US 2</code>, considerando 730 horas/mes, sistema operativo Linux y almacenamiento Standard SSD:</p>
+<table>
+<thead>
+<tr>
+<th>Concepto de infraestructura</th>
+<th>Costo sin autoscale (4 instancias 24/7)</th>
+<th>Costo con autoscale (2 fijas + 2 durante picos de 4 h/día)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Máquinas virtuales Standard_B2s (2 vCPU, 4 GB RAM)</td>
+<td>4 × USD 30.36 = <strong>USD 121.44</strong></td>
+<td>2 × 30.36 + 2 × (30.36 × 4/24) = <strong>USD 70.84</strong></td>
+</tr>
+<tr>
+<td>Discos administrados Standard SSD E4 (32 GB)</td>
+<td>4 × USD 2.40 = <strong>USD 9.60</strong></td>
+<td>2 × 2.40 + 2 × (2.40 × 4/24) = <strong>USD 5.60</strong></td>
+</tr>
+<tr>
+<td>Azure Load Balancer Standard (reglas y datos)</td>
+<td><strong>USD 18.25</strong></td>
+<td><strong>USD 18.25</strong></td>
+</tr>
+<tr>
+<td>IP pública Standard (zonal)</td>
+<td><strong>USD 3.65</strong></td>
+<td><strong>USD 3.65</strong></td>
+</tr>
+<tr>
+<td>Log Analytics Workspace (ingesta ~5 GB/mes)</td>
+<td><strong>USD 11.50</strong></td>
+<td><strong>USD 11.50</strong></td>
+</tr>
+<tr>
+<td>Azure Key Vault, Métricas y Alertas</td>
+<td><strong>USD 1.50</strong></td>
+<td><strong>USD 1.50</strong></td>
+</tr>
+<tr>
+<td><strong>Total mensual estimado</strong></td>
+<td><strong>USD 165.94</strong></td>
+<td><strong>USD 111.34</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ahorro económico por autoscale:</strong>
+El dimensionamiento dinámico reduce los costos operativos de cómputo y almacenamiento en un <strong>32.9 %</strong> (~USD 54.60/mes de ahorro directo), evitando el sobre-aprovisionamiento durante las 20 horas valle de cada día sin degradar la capacidad de absorción en los picos de temporada alta.</p>
+<hr />
+<h1 id="7-preguntas-de-analisis">7. Preguntas de análisis</h1>
+<h3 id="1-con-la-capacidad-medida-por-instancia-cuantas-instancias-necesitaria-caribeshop-para-soportar-300-rps-con-p95-500-ms-es-viable-con-su-cuota-actual-que-cambiaria">1. Con la capacidad medida por instancia, ¿cuántas instancias necesitaría CaribeShop para soportar 300 RPS con p95 &lt; 500 ms? ¿Es viable con su cuota actual? ¿Qué cambiaría?</h3>
+<ul>
+<li><strong>Cálculo:</strong> La capacidad máxima medida con latencia $p95 &lt; 500$ ms es $C_{500} = 4{,}4$ RPS por instancia. Aplicando un margen de seguridad de ingeniería del 30 % (operación al 70 % de la capacidad máxima para absorber micro-ráfagas):
+  $$C_{\text{efectiva}} = 0{,}7 \times 4{,}4\ \text{RPS} \approx 3{,}08\ \text{RPS por instancia}$$
+  $$N = \left\lceil \frac{300\ \text{RPS}}{3{,}08\ \text{RPS/instancia}} \right\rceil = 98\ \text{instancias}$$</li>
+<li><strong>Viabilidad con la cuota actual:</strong> Cada instancia (<code>Standard_D2als_v7</code>) consume 2 vCPUs. 98 instancias requerirían <strong>196 vCPUs</strong>. La salida de <code>az vm list-usage -l eastus2</code> confirma que la suscripción posee una cuota máxima regional de <strong>10 vCPUs</strong> (<code>Total Regional vCPUs = 10</code>). Por ende, <strong>NO es viable</strong> bajo las condiciones actuales.</li>
+<li><strong>Cambios recomendados:</strong></li>
+<li><em>Optimización de la app:</em> Implementar almacenamiento en caché (Redis / Azure Cache) y offloading de contenido estático hacia Azure Front Door / CDN para que solo las transacciones dinámicas alcancen el backend.</li>
+<li><em>Tipo de instancia:</em> Migrar a instancias optimizadas para cómputo de la serie F (ej. <code>Standard_F8s_v2</code> con 8 vCPUs) para multiplicar por 8 el throughput por VM y reducir la cantidad de nodos a gestionar.</li>
+<li><em>Gestión de cuota:</em> Solicitar formalmente un incremento de cuota de vCPUs en el portal de soporte de Azure.</li>
+<li><em>Ajuste de autoscale:</em> Incrementar el escalón de scale-out a +4 instancias por evento y elevar <code>max_instances</code>.</li>
+</ul>
+<h3 id="2-tiempo-de-reaccion-medido-y-ajuste-para-un-pico-subito-a-las-800-p-m">2. Tiempo de reacción medido y ajuste para un pico súbito a las 8:00 p. m.</h3>
+<ul>
+<li><strong>Tiempo medido:</strong> El autoscale reactivo requiere entre <strong>7 y 8 minutos</strong> desde el inicio del tráfico hasta que la nueva instancia atiende solicitudes (5 min de ventana de evaluación métrica + aprovisionamiento + cloud-init + 2 sondas de salud).</li>
+<li><strong>Problema con pico súbito:</strong> Si una promoción masiva inicia repentinamente a las 8:00 p. m., el tráfico saturará la capacidad existente de inmediato, provocando colas de peticiones y timeouts durante los 8 minutos de retardo del autoscale reactivo.</li>
+<li><strong>Ajustes de configuración:</strong></li>
+<li><strong>Perfil programado (Scheduled Profile):</strong> Configurar en Terraform una regla cronológica recurrente que incremente la capacidad mínima de 2 a 12 instancias a las 7:45 p. m. (15 minutos antes de la campaña), permitiendo que la flota esté lista y con las sondas en verde al momento del lanzamiento.</li>
+<li><strong>Autoscale predictivo:</strong> Activar el modelo de pronóstico predictivo de Azure Monitor Autoscale, el cual analiza patrones históricos de demanda diaria y aprovisiona instancias con anticipación.</li>
+<li><strong>Escalamiento agresivo:</strong> Configurar una regla secundaria con ventana corta de 2 minutos que aumente +4 instancias si la CPU sobrepasa el 85 %.</li>
+</ul>
+<h3 id="3-que-componente-es-ahora-el-punto-unico-de-falla-de-su-arquitectura-cuanto-costaria-eliminarlo">3. ¿Qué componente es ahora el punto único de falla de su arquitectura? ¿Cuánto costaría eliminarlo?</h3>
+<ul>
+<li><strong>Punto único de falla (SPOF):</strong> La <strong>región geográfica (<code>eastus2</code>)</strong>. La IP pública, el Load Balancer y el VMSS están distribuidos en las zonas de disponibilidad 1, 2 y 3, por lo que toleran la pérdida de centros de datos completos dentro de la región. Sin embargo, un corte mayor de conectividad o desastre que afecte a toda la región Este de EE. UU. tumbaría la plataforma.</li>
+<li><strong>Solución y costos para eliminarlo:</strong></li>
+<li>Desplegar una réplica idéntica de la infraestructura en una región secundaria par (ej. <code>centralus</code>).</li>
+<li>Implementar un balanceador global de capa 7 como <strong>Azure Front Door Standard</strong> o de DNS como <strong>Azure Traffic Manager</strong> para distribuir el tráfico entre regiones con failover automático.</li>
+<li><em>Costo incremental:</em> Duplicar el cómputo y balanceo base (~USD 110/mes) + suscripción base de Azure Front Door Standard (~USD 35/mes) + replicación de secretos y almacenamiento. Costo total adicional estimado: <strong>~USD 150 - 180/mes</strong>.</li>
+</ul>
+<h3 id="4-si-un-atacante-obtuviera-ejecucion-de-codigo-en-una-instancia-que-podria-y-que-no-podria-hacer-dados-sus-controles">4. Si un atacante obtuviera ejecución de código en una instancia, ¿qué podría y qué no podría hacer, dados sus controles?</h3>
+<ul>
+<li><strong>Lo que NO podría hacer (Capas de defensa activas):</strong></li>
+<li><em>A nivel de sistema operativo:</em> El servicio corre bajo <code>DynamicUser=yes</code>, <code>NoNewPrivileges=yes</code>, <code>ProtectSystem=strict</code> y <code>ProtectHome=yes</code>. El atacante no tiene privilegios de <code>root</code>, no puede modificar binarios del sistema, no puede escribir fuera de <code>/tmp</code> ni crear usuarios persistentes.</li>
+<li><em>A nivel de red (Egress filtrado):</em> El NSG deniega la salida hacia Internet y solo autoriza el Service Tag <code>AzureKeyVault</code>. El atacante no puede establecer conexiones reversas (<em>reverse shells</em>), exfiltrar datos hacia servidores de comando y control (C2), ni descargar herramientas ofensivas.</li>
+<li><em>A nivel de acceso remoto:</em> Ninguna VM tiene IP pública y los puertos de administración SSH (22) y RDP (3389) están totalmente bloqueados en el NSG.</li>
+<li><em>A nivel de identidad en Azure:</em> El atacante no posee credenciales en texto plano en disco. La identidad administrada asignada al VMSS únicamente posee el rol de mínimo privilegio <code>Key Vault Secrets User</code>. El atacante <strong>no puede</strong> crear, borrar ni modificar secretos en Key Vault, ni administrar otros recursos de la suscripción.</li>
+<li><em>A nivel de gobierno:</em> Si intentase crear recursos en el grupo de recursos con la CLI, la política Deny de Azure bloquearía cualquier intento de exponer recursos no autorizados.</li>
+<li><strong>Lo que SÍ podría hacer:</strong></li>
+<li>Podría invocar el endpoint local de IMDS (<code>http://169.254.169.254</code>) para obtener un token OAuth de la identidad administrada y leer los secretos autorizados en Key Vault (<code>app-db-password</code>). Esta acción queda inmediatamente registrada con su dirección IP y objeto ID en la auditoría de Log Analytics (<code>AZKVAuditLogs</code>).</li>
+<li>Podría consumir recursos locales de CPU y memoria para provocar denegación de servicio en esa instancia; sin embargo, la sonda de salud detectaría la degradación retirándola del LB, y el autoscale aprovisionaría reemplazos automáticamente.</li>
+</ul>
+<h3 id="5-por-que-el-escaneo-en-el-pipeline-no-sustituye-a-azure-policy-ni-viceversa">5. ¿Por qué el escaneo en el pipeline no sustituye a Azure Policy, ni viceversa?</h3>
+<ul>
+<li><strong>Diferencia de propósito y ciclo de vida:</strong></li>
+<li><strong>Checkov en el pipeline (Shift-Left preventivo):</strong> Analiza el código fuente antes de que se despliegue. Brinda retroalimentación inmediata al desarrollador en el Pull Request, evitando que malas prácticas o anti-patrones lleguen a las ramas principales. No obstante, tiene un límite ciego: solo inspecciona el código que pasa por el repositorio Git. Si un administrador crea un recurso inseguro directamente desde Azure Portal, la CLI o un script ad-hoc, el pipeline no interviene.</li>
+<li><strong>Azure Policy (Gobierno en tiempo de ejecución / Control Plane):</strong> Actúa como la última línea de defensa en el motor de Azure Resource Manager (ARM). Es universal e ineludible: intercepta cualquier petición REST hacia Azure sin importar quién la origine (Terraform, portal, SDK, CLI). Sin embargo, da retroalimentación tardía (en tiempo de despliegue), genera errores menos intuitivos para el flujo de desarrollo diario y no analiza el código antes del commit.</li>
+<li><strong>Conclusión:</strong> Ambos controles son complementarios y forman parte de la arquitectura DevSecOps: el pipeline educa y previene en desarrollo, mientras que Azure Policy impone la gobernanza innegociable en el entorno de nube.</li>
+</ul>
+<h3 id="6-el-estado-de-terraform-contiene-secretos-describa-como-lo-protegieron-y-que-pasaria-si-se-filtrara">6. El estado de Terraform contiene secretos. Describa cómo lo protegieron y qué pasaría si se filtrara.</h3>
+<ul>
+<li><strong>Protección implementada:</strong></li>
+<li>El archivo <code>terraform.tfstate</code> nunca se almacena en el repositorio de Git (excluido explícitamente en <code>.gitignore</code>).</li>
+<li>Se configuró un <strong>backend remoto en Azure Blob Storage (<code>azurerm</code>)</strong> aprovisionado por un módulo bootstrap independiente.</li>
+<li>La Storage Account del estado está endurecida con: cifrado en reposo con claves de infraestructura (doble cifrado), protocolo TLS 1.2 obligatorio, versionado de blobs habilitado para recuperación ante desastres, firewall de red que solo permite la IP autorizada del operador y <strong>bloqueo total de claves de acceso compartido</strong> (<code>shared_access_key_enabled = false</code>). El acceso exige exclusivamente roles RBAC de Entra ID (<code>Storage Blob Data Contributor</code>).</li>
+<li><strong>Qué pasaría si el estado se filtrara:</strong></li>
+<li>En Terraform, marcar una variable o salida como <code>sensitive = true</code> solo oculta su valor en la terminal; en el archivo JSON del estado el valor de <code>random_password.db.result</code> reside en <strong>texto plano</strong>.</li>
+<li>Si el estado se filtrara, un atacante obtendría la contraseña de la base de datos simulada y la topología detallada de la infraestructura (IDs de recursos, rangos de subred, configuraciones internas).</li>
+<li><strong>Plan de respuesta e incidente:</strong></li>
+<li><strong>Rotación inmediata del secreto:</strong> Ejecutar <code>terraform apply -replace="random_password.db"</code> para regenerar la contraseña en Key Vault.</li>
+<li><strong>Auditoría forense:</strong> Consultar los logs de auditoría en Log Analytics para determinar si la credencial filtrada fue utilizada desde alguna dirección IP no autorizada.</li>
+<li><strong>Mejora para producción:</strong> En versiones modernas de Terraform / OpenTofu utilizar proveedores que soporten atributos <em>ephemeral</em> o gestionar los secretos fuera de banda (inyectados directamente en Key Vault por un pipeline de seguridad sin pasar por el estado de Terraform).</li>
+</ul>
+<hr />
+<h1 id="8-anexos">8. Anexos</h1>
+<ul>
+<li><strong>Anexo A:</strong> Salida completa de escaneo local con Checkov (<code>checkov -d infra --framework terraform --compact</code>): 0 hallazgos fallidos, skips justificados.</li>
+<li><strong>Anexo B:</strong> Capturas de pantalla de verificación en <code>evidencias/capturas/</code>:</li>
+<li><code>S1.png</code>: Configuración de backend remoto y repositorio limpio sin secretos ni estados.</li>
+<li><code>D1.png</code>: Pull Request #2 fallido bloqueado por Checkov ante regla SSH abierta (<code>CKV_AZURE_10</code>).</li>
+<li><code>PR1.png</code>: Pull Request #1 aprobado y mergeado con validaciones exitosas.</li>
+<li><code>D2.png</code>: Justificación exhaustiva de skips de Checkov.</li>
+<li><code>D3.1.png</code> y <code>D3.2.png</code>: Configuración reproducible y segura de la aplicación vía <code>cloud-init</code>.</li>
+<li><strong>Anexo C:</strong> Evidencias de ejecución automática en <code>evidencias/auto/</code>:</li>
+<li><code>S1_backend_y_git.txt</code>, <code>S2_red_nsg.txt</code>, <code>S3_secret_check.txt</code>, <code>S4_roles_vmss.txt</code>, <code>S5_policy_deny.txt</code>, <code>S6_kql_secretos.txt</code>, <code>E1_instancias_zonas.txt</code>, <code>E2_sonda.txt</code>, <code>E3_autoscale.txt</code>, <code>E4_instancias.txt</code>, <code>E4_instancias_despues.txt</code>, <code>E5_alertas.txt</code>, <code>P3_2_egress.txt</code>.</li>
+<li><strong>Anexo D:</strong> Reportes y gráficos generados:</li>
+<li>Reporte interactivo de Locust: <code>evidencias/p1/capacidad.html</code> y CSVs asociados.</li>
+<li>Gráficos de fallas: <code>evidencias/p2/monitor_logica.png</code> y <code>evidencias/p2/monitor_abrupta.png</code>.</li>
+<li><strong>Anexo E:</strong> Enlaces del proyecto:</li>
+<li>Repositorio GitHub: <code>https://github.com/ramdondeinternet99-code/CaribeShop</code></li>
+<li>Pull Request #1 (Exitoso / Mergeado): <code>https://github.com/ramdondeinternet99-code/CaribeShop/pull/1</code></li>
+<li>Pull Request #2 (Bloqueado por Checkov): <code>https://github.com/ramdondeinternet99-code/CaribeShop/pull/2</code></li>
+</ul>
+</body>
+</html>

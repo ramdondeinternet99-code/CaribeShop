@@ -14,9 +14,11 @@ import urllib.request
 def sondear(url):
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
-            return resp.status, resp.headers.get("X-Instance", "")
+            inst = resp.headers.get("X-Served-By") or resp.headers.get("X-Instance", "")
+            return resp.status, inst
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.headers.get("X-Instance", "") if exc.headers else ""
+        inst = (exc.headers.get("X-Served-By") or exc.headers.get("X-Instance", "")) if exc.headers else ""
+        return exc.code, inst
     except Exception:  # timeout, conexion rechazada, etc.
         return 0, ""
 

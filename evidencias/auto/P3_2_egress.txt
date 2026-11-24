@@ -1,0 +1,6 @@
+Enable succeeded: 
+[stdout]
+internet: BLOQUEADO
+keyvault: 401
+[stderr]
+

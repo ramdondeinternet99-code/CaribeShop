@@ -1,0 +1,4 @@
+Nombre                           Severidad    Habilitada    Ventana
+-------------------------------  -----------  ------------  ---------
+alerta-sonda-lb-caribeshop       1            True          PT5M
+alerta-cpu-sostenida-caribeshop  2            True          PT15M

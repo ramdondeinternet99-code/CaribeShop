@@ -123,15 +123,15 @@ scripts/evidencias.sh
 
 ## Checklist de la línea base de seguridad
 
-- [ ] `checkov -d infra --framework terraform` sin hallazgos fallidos; cada skip justificado (tabla de riesgos del informe)
-- [ ] Ningún `terraform.tfstate`, `.tfvars` con datos reales ni secreto en el historial de Git
-- [ ] Ninguna VM con IP pública; ningún puerto 22/3389 abierto a Internet
-- [ ] Estado de Terraform en backend remoto (Storage sin llaves, firewall, versionado, TLS 1.2)
-- [ ] Key Vault: RBAC, purge protection, firewall (subred + IP operador), secreto con expiración
-- [ ] Identidad del VMSS con rol de solo lectura de secretos (`Key Vault Secrets User`)
-- [ ] Egress filtrado (solo `AzureKeyVault`); Internet denegado
-- [ ] Azure Policy con efecto Deny asignada por Terraform al grupo de recursos
-- [ ] Diagnostic settings del Key Vault hacia Log Analytics + consulta KQL
-- [ ] Pipeline bloqueante en PR (fmt, validate, Checkov terraform + secrets)
-- [ ] Evidencias de scale-out, scale-in, falla lógica y falla abrupta con métricas
-- [ ] Recursos destruidos (`terraform destroy`) y verificados en el portal
+- [x] `checkov -d infra --framework terraform` sin hallazgos fallidos; cada skip justificado (tabla de riesgos del informe)
+- [x] Ningún `terraform.tfstate`, `.tfvars` con datos reales ni secreto en el historial de Git
+- [x] Ninguna VM con IP pública; ningún puerto 22/3389 abierto a Internet
+- [x] Estado de Terraform en backend remoto (Storage sin llaves, firewall, versionado, TLS 1.2)
+- [x] Key Vault: RBAC, purge protection, firewall (subred + IP operador), secreto con expiración
+- [x] Identidad del VMSS con rol de solo lectura de secretos (`Key Vault Secrets User`)
+- [x] Egress filtrado (solo `AzureKeyVault`); Internet denegado
+- [x] Azure Policy con efecto Deny asignada por Terraform al grupo de recursos
+- [x] Diagnostic settings del Key Vault hacia Log Analytics + consulta KQL
+- [x] Pipeline bloqueante en PR (fmt, validate, Checkov terraform + secrets)
+- [x] Evidencias de scale-out, scale-in, falla lógica y falla abrupta con métricas
+- [ ] Recursos destruidos (`terraform destroy`) y verificados en el portal (destruir tras grabar video)

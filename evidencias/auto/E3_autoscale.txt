@@ -1,0 +1,34 @@
+{
+  "max": "4",
+  "min": "2",
+  "reglas": [
+    {
+      "accion": "Increase",
+      "cooldown": "PT3M",
+      "metrica": "Percentage CPU",
+      "op": "GreaterThan",
+      "umbral": 60.0,
+      "ventana": "PT5M"
+    },
+    {
+      "accion": "Decrease",
+      "cooldown": "PT5M",
+      "metrica": "Percentage CPU",
+      "op": "LessThan",
+      "umbral": 25.0,
+      "ventana": "PT5M"
+    }
+  ]
+}
+--- AutoscaleScaleActions en Log Analytics (ultimas 24 h) ---
+ERROR: (BadArgumentError) The request had some invalid properties
+Code: BadArgumentError
+Message: The request had some invalid properties
+Inner error: {
+    "code": "SemanticError",
+    "message": "A semantic error occurred.",
+    "innererror": {
+        "code": "SEM0100",
+        "message": "'project' operator: Failed to resolve table or column expression named 'AutoscaleScaleActions'"
+    }
+}

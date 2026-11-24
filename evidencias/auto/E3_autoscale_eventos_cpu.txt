@@ -1,0 +1,66 @@
+Hora                          Evento                    Estado
+----------------------------  ------------------------  ---------
+2026-11-24T02:31:23.2957148Z  Update autoscale setting  Succeeded
+--- CPU promedio por minuto (ultima hora) ---
+Timestamp             Name            Average
+--------------------  --------------  ---------
+2026-11-24T02:21:00Z  Percentage CPU  13.98
+2026-11-24T02:22:00Z  Percentage CPU  5.355
+2026-11-24T02:23:00Z  Percentage CPU  0.2725
+2026-11-24T02:24:00Z  Percentage CPU  0.465
+2026-11-24T02:25:00Z  Percentage CPU  0.4575
+2026-11-24T02:26:00Z  Percentage CPU  0.14
+2026-11-24T02:27:00Z  Percentage CPU  0.1325
+2026-11-24T02:28:00Z  Percentage CPU  0.12
+2026-11-24T02:29:00Z  Percentage CPU  0.235
+2026-11-24T02:30:00Z  Percentage CPU  0.2325
+2026-11-24T02:31:00Z  Percentage CPU  0.135
+2026-11-24T02:32:00Z  Percentage CPU  0.125
+2026-11-24T02:33:00Z  Percentage CPU  0.1225
+2026-11-24T02:34:00Z  Percentage CPU  0.13
+2026-11-24T02:35:00Z  Percentage CPU  0.1275
+2026-11-24T02:36:00Z  Percentage CPU  0.125
+2026-11-24T02:37:00Z  Percentage CPU  0.12
+2026-11-24T02:38:00Z  Percentage CPU  0.12
+2026-11-24T02:39:00Z  Percentage CPU  0.125
+2026-11-24T02:40:00Z  Percentage CPU  0.115
+2026-11-24T02:41:00Z  Percentage CPU  0.1175
+2026-11-24T02:42:00Z  Percentage CPU  0.1125
+2026-11-24T02:43:00Z  Percentage CPU  0.1175
+2026-11-24T02:44:00Z  Percentage CPU  0.1125
+2026-11-24T02:45:00Z  Percentage CPU  0.11
+2026-11-24T02:46:00Z  Percentage CPU  0.115
+2026-11-24T02:47:00Z  Percentage CPU  0.115
+2026-11-24T02:48:00Z  Percentage CPU  0.1125
+2026-11-24T02:49:00Z  Percentage CPU  0.1175
+2026-11-24T02:50:00Z  Percentage CPU  0.115
+2026-11-24T02:51:00Z  Percentage CPU  0.1125
+2026-11-24T02:52:00Z  Percentage CPU  0.1025
+2026-11-24T02:53:00Z  Percentage CPU  0.105
+2026-11-24T02:54:00Z  Percentage CPU  0.1075
+2026-11-24T02:55:00Z  Percentage CPU  0.1125
+2026-11-24T02:56:00Z  Percentage CPU  0.12
+2026-11-24T02:57:00Z  Percentage CPU  0.105
+2026-11-24T02:58:00Z  Percentage CPU  0.105
+2026-11-24T02:59:00Z  Percentage CPU  0.1125
+2026-11-24T03:00:00Z  Percentage CPU  0.115
+2026-11-24T03:01:00Z  Percentage CPU  0.1225
+2026-11-24T03:02:00Z  Percentage CPU  0.1175
+2026-11-24T03:03:00Z  Percentage CPU  0.1125
+2026-11-24T03:04:00Z  Percentage CPU  0.1175
+2026-11-24T03:05:00Z  Percentage CPU  0.1175
+2026-11-24T03:06:00Z  Percentage CPU  0.12
+2026-11-24T03:07:00Z  Percentage CPU  0.115
+2026-11-24T03:08:00Z  Percentage CPU  0.1175
+2026-11-24T03:09:00Z  Percentage CPU  0.12
+2026-11-24T03:10:00Z  Percentage CPU  0.13
+2026-11-24T03:11:00Z  Percentage CPU  0.125
+2026-11-24T03:12:00Z  Percentage CPU  0.1075
+2026-11-24T03:13:00Z  Percentage CPU  0.1025
+2026-11-24T03:14:00Z  Percentage CPU  0.1225
+2026-11-24T03:15:00Z  Percentage CPU  0.2225
+2026-11-24T03:16:00Z  Percentage CPU  0.1175
+2026-11-24T03:17:00Z  Percentage CPU  0.115
+2026-11-24T03:18:00Z  Percentage CPU  0.1125
+2026-11-24T03:19:00Z  Percentage CPU  0.1125
+2026-11-24T03:20:00Z  Percentage CPU

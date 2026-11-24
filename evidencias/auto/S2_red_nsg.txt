@@ -1,0 +1,11 @@
+--- IP publica de instancias (debe estar vacio) ---
+
+--- reglas del NSG ---
+Prioridad    Nombre                  Direccion    Acceso    Puertos    Origen             Destino
+-----------  ----------------------  -----------  --------  ---------  -----------------  -------------
+4000         deny-all-inbound        Inbound      Deny      *          *                  *
+4000         deny-internet-outbound  Outbound     Deny      *          *                  Internet
+100          allow-http-internet     Inbound      Allow     80         Internet           10.10.1.0/24
+110          allow-lb-probe          Inbound      Allow     80         AzureLoadBalancer  10.10.1.0/24
+100          allow-keyvault          Outbound     Allow     443        *                  AzureKeyVault
+200          deny-ssh-rdp-internet   Inbound      Deny                 Internet           *
