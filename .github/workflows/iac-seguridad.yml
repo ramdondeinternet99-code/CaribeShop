@@ -50,7 +50,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-      security-events: write       # para publicar SARIF en la pestana Security
+      security-events: write # para publicar SARIF en la pestana Security
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +66,7 @@ jobs:
 
       - name: Publicar resultados en GitHub Security
         if: always()
-        continue-on-error: true    # si code scanning no esta disponible, no falla el job
+        continue-on-error: true # si code scanning no esta disponible, no falla el job
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
@@ -84,21 +84,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - run: pip install checkov
+
       - name: Checkov - framework secrets
         run: checkov -d . --framework secrets --compact
 
   plan:
     name: Terraform plan (OIDC, opcional)
     if: ${{ vars.ENABLE_PLAN == 'true' }}
-    needs: [terraform-checks, checkov]    # sin escaneo limpio no hay plan
+    needs: [terraform-checks, checkov] # sin escaneo limpio no hay plan
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write                     # necesario para federacion OIDC
+      id-token: write # necesario para federacion OIDC
     env:
       ARM_USE_OIDC: "true"
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
