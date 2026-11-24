@@ -28,7 +28,7 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependencias de prueba y graficos
-        run: pip install locust matplotlib
+        run: pip install --only-binary :all: locust==2.32.2 matplotlib==3.9.2
 
       - name: Ejecutar prueba de capacidad (P1.1)
         if: ${{ inputs.prueba == 'capacidad' }}
