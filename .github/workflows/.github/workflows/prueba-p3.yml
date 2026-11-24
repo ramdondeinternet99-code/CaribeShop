@@ -1,0 +1,64 @@
+name: Pruebas de seguridad P3
+
+on:
+  workflow_dispatch:
+    inputs:
+      keyvault_name:
+        description: "Nombre del Key Vault"
+        required: true
+        type: string
+      secret_name:
+        description: "Nombre del secreto en Key Vault"
+        required: true
+        type: string
+      rg_name:
+        description: "Nombre del Resource Group de CaribeShop"
+        required: true
+        type: string
+      location:
+        description: "Region de Azure (ej. eastus2)"
+        required: true
+        default: "eastus2"
+        type: string
+
+jobs:
+  pruebas-p3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Iniciar sesion en Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: P3.1 - Intentar leer secreto desde red no autorizada (runner GitHub)
+        run: |
+          mkdir -p evidencias/p3
+          {
+            echo "=== IP publica del runner ==="
+            curl -s https://api.ipify.org; echo ""
+            echo "=== Intento de lectura de secreto (debe fallar por firewall/red) ==="
+            az keyvault secret show \
+              --vault-name "${{ inputs.keyvault_name }}" \
+              --name "${{ inputs.secret_name }}" 2>&1 || true
+          } | tee evidencias/p3/p3_1_red_no_autorizada.txt
+
+      - name: P3.3 - Violar politica Deny (S5) y capturar rechazo
+        run: |
+          {
+            echo "=== Intento de crear recurso que viola la politica Deny (debe fallar con RequestDisallowedByPolicy) ==="
+            az storage account create \
+              --name "stviolacion$(date +%s | tail -c 6)" \
+              --resource-group "${{ inputs.rg_name }}" \
+              --location "${{ inputs.location }}" \
+              --sku Standard_LRS 2>&1 || true
+          } | tee evidencias/p3/p3_3_violacion_policy.txt
+
+      - name: Subir evidencias de P3
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-p3
+          path: evidencias/p3/
