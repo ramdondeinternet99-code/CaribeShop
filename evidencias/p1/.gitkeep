@@ -1,0 +1,62 @@
+name: Prueba de carga P1 (Locust)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prueba:
+        description: "Tipo de prueba (capacidad o escalonada)"
+        required: true
+        default: "capacidad"
+        type: choice
+        options:
+          - capacidad
+          - escalonada
+      peak_users:
+        description: "Usuarios pico (para prueba escalonada)"
+        required: false
+        default: "40"
+        type: string
+
+jobs:
+  locust-p1:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias de prueba y graficos
+        run: pip install locust matplotlib
+
+      - name: Ejecutar prueba de capacidad (P1.1)
+        if: ${{ inputs.prueba == 'capacidad' }}
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          locust -f tests/locustfile_capacidad.py --headless \
+            --host "$APP_URL" \
+            --csv evidencias/p1/capacidad \
+            --html evidencias/p1/capacidad.html
+
+      - name: Ejecutar prueba escalonada y graficar (P1.2 y P1.3)
+        if: ${{ inputs.prueba == 'escalonada' }}
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          PEAK_USERS: ${{ inputs.peak_users }}
+        run: |
+          locust -f tests/locustfile.py --headless \
+            --host "$APP_URL" \
+            --csv evidencias/p1/escalonada \
+            --csv-full-history \
+            --html evidencias/p1/escalonada.html
+          python3 scripts/graficar_p1.py evidencias/p1/escalonada_stats_history.csv
+
+      - name: Subir artefactos de P1
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-p1-${{ inputs.prueba }}
+          path: evidencias/p1/
